@@ -25,8 +25,10 @@ pipeline {
     }
     stage('Static Code Analysis') {
       steps {
-        sh '''mvn sonar:sonar -Dsonar.host.url=http://sonarqube:9000 -Dsonar.login=5accbb3a1b534231efcea335678bf3fecc5e0bb0
+        sh '''echo Sonaqube Code Analysis is commented.
 '''
+// mvn sonar:sonar -Dsonar.host.url=http://sonarqube:9000 -Dsonar.login=5accbb3a1b534231efcea335678bf3fecc5e0bb0
+
       }
     }
     stage('Packaging') {
@@ -38,10 +40,39 @@ pipeline {
 
     stage('Setup QA Nodes'){
       steps {
-        sh '''sh playbooks/setup-qa-nodes.sh
+        script {
+                IS_NODE_EXISTS = sh (
+                  script: 'gcloud compute instances list | grep qanode',
+                  returnStatus: true
+                )
+                if (IS_NODE_EXISTS == 0) {
+                  sh "ansible-playbook -i hosts playbooks/qa-deploy.yml --private-key /home/ec2-user/devops.pem -e WAR_LOC=$WORKSPACE"
+                } else {
+                  sh 'sh playbooks/setup-qa-nodes.sh'
+                  sh 'ansible-playbook -i hosts playbooks/set-qa-stack.yml --private-key /home/ec2-user/devops.pem'
+                  sh 'ansible-playbook -i hosts playbooks/qa-deploy.yml --private-key /home/ec2-user/devops.pem'
+                }
+                
+        }
+      }
+    }
+
+    stage('Selenium Testing') {
+      steps{
+        build 'SELENIUM-TESTING-JOB'
+      }
+    }
+
+    stage('API Testing') {
+      steps{
+        sh '''sleep 30
+python api-test.py
 '''
-        sh '''ansible-playbook -i hosts playbooks/set-qa-stack.yml --private-key /home/ec2-user/devops.pem 
-'''
+      }
+    }
+    stage('Approval') {
+      steps {
+        input 'Do you want to approve for Stage Deploy?'
       }
     }
   }
